@@ -1,0 +1,3 @@
+Bij deze patient is er iets niet helemaal goed gegaan met de freestyle libre. Deze freestyle libre heeft namelijk van meerdere patienten data opgeslagen (sinds maart) i.p.v. 
+dat deze tussendoor is gereset zoals dat normaal gaat! Het excel file bevat wel de juiste data voor deze patient, namelijk de glucosewaardes tussen 13-05-17
+en 26-05-17.
