@@ -1,4 +1,4 @@
-# Glucose and Steps Data Processing
+# Glucose Prediction and Lifestyle Recommendations for Diabetes Management
 
 ## Overview
 
