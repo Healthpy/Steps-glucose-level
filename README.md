@@ -10,7 +10,7 @@ This repository contains a comprehensive project focused on analyzing health dat
 
 2. **Predictive Modeling for Glucose Episodes:**
    - The core of the project involves developing predictive models aimed at forecasting glucose episodes. These episodes may include hypoglycemia (low blood sugar) or hyperglycemia (high blood sugar) events.
-   - Advanced machine learning algorithms are utilized to build these predictive models, which analyze the relationship between the patients' activity levels (steps), heart rate, and glucose levels.
+   - Advanced machine learning algorithms are utilized to build these predictive models, which analyze the relationship between the patients' activity levels (steps), heart rate, and glucose levels. Hence, multivariate time series approaches.
 
 3. **Counterfactual Explanation Algorithms:**
    - To interpret the predictions made by the models, counterfactual explanation algorithms are applied. These algorithms help in understanding what changes in the input data (specifically, the steps data) could lead to different outcomes in the predictions.
