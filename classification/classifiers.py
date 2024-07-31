@@ -13,12 +13,18 @@ from sktime.classification.deep_learning import SimpleRNNClassifier
 from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score, accuracy_score
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense
+from tensorflow.keras.utils import to_categorical
 from sktime.classification.interval_based import TimeSeriesForestClassifier
 from sktime.classification.distance_based import KNeighborsTimeSeriesClassifier
 from sktime.classification.shapelet_based import ShapeletTransformClassifier
 from sktime.classification.dictionary_based import BOSSEnsemble
 from sktime.classification.hybrid import HIVECOTEV2
 from sktime.datatypes._panel._convert import from_3d_numpy_to_2d_array
+import time
+from sklearn import preprocessing
+from tslearn.neighbors import KNeighborsTimeSeries, KNeighborsTimeSeriesClassifier
+import matplotlib.pyplot as plt
+
 
 from data_processing.interpolation import categorize_glucose_level
 df = pd.read_excel("Selected_Patients/combined_data.xlsx")
@@ -47,88 +53,92 @@ def steps_classifiers():
         print(f"{name}: {score:.4f}")
 
 def LSTM_classifier():
-    # Create lag features
-    for lag in range(1, 6):
-        df[f'glucose_lag_{lag}'] = df.groupby('PatientID')['glucose_level'].shift(lag)
-        df[f'steps_lag_{lag}'] = df.groupby('PatientID')['steps'].shift(lag)
-        df[f'heartbeat_lag_{lag}'] = df.groupby('PatientID')['heart'].shift(lag)
 
-    # Drop rows with NaN values created by lagging
-    df.dropna(inplace=True)
-    df.drop(columns='level', inplace=True)
-
-    # Normalize the data
-    scaler = StandardScaler()
-    df[['steps', 'heart', 'glucose_level']] = scaler.fit_transform(df[['steps', 'heart', 'glucose_level']])
+    # # Normalize the data
+    # scaler = StandardScaler()
+    # df[['steps', 'heart', 'glucose_level']] = scaler.fit_transform(df[['steps', 'heart', 'glucose_level']])
 
     # Prepare data for LSTM model
-    time_steps = 4  # Number of previous time steps to consider
-    features = ['steps', 'heart', 'glucose_level'] + \
-            [f'glucose_lag_{i}' for i in range(1, 6)] + \
-            [f'steps_lag_{i}' for i in range(1, 6)] + \
-            [f'heartbeat_lag_{i}' for i in range(1, 6)]
+    time_steps = 10  # Number of previous time steps to consider
+    features = ['steps', 'heart', 'glucose_level']
 
     X, y = [], []
     for patient_id in df['PatientID'].unique():
         patient_data = df[df['PatientID'] == patient_id]
         for i in range(time_steps, len(patient_data)):
             X.append(patient_data[features].iloc[i-time_steps:i].values)
-            y.append(patient_data['glucose_level'].iloc[i])
+            y.append(patient_data['level'].iloc[i])
 
-    X, y = np.array(X), np.array(y)
+    label_encoder = LabelEncoder()
+    y = label_encoder.fit_transform(y)
+    y = to_categorical(y, num_classes=3)
+
+    X = np.array(X)
+    X = X.transpose(0, 2, 1)
 
     # Split data into training and testing sets
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
+    np.save("results/X_train.npy", X_train)
+    np.save("results/X_test.npy", X_test)
+    np.save("results/y_train", y_train)
+    np.save("results/y_test", y_test)
+
     # Build the LSTM model
     model = Sequential()
-    model.add(LSTM(units=50, return_sequences=True, input_shape=(time_steps, len(features))))
+    model.add(LSTM(units=50, return_sequences=True, input_shape=(len(features), time_steps)))
     model.add(LSTM(units=50))
-    model.add(Dense(1))
-    model.compile(optimizer='adam', loss='mean_squared_error')
+    model.add(Dense(3, activation='softmax'))
+    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    # model.compile(optimizer='adam', loss='mean_squared_error')
 
     # Train the model
-    model.fit(X_train, y_train, epochs=20, batch_size=32)
+    model.fit(X_train, y_train, epochs=100, batch_size=128)
 
     # Make predictions on the test set
     y_pred = model.predict(X_test)
 
-    # Inverse transform the predicted values if scaling was applied
-    y_test_scaled = y_test * scaler.scale_[2] + scaler.mean_[2]
-    y_pred_scaled = y_pred.flatten() * scaler.scale_[2] + scaler.mean_[2]
+    # # Inverse transform the predicted values if scaling was applied
+    # y_test_scaled = y_test * scaler.scale_[2] + scaler.mean_[2]
+    # y_pred_scaled = y_pred.flatten() * scaler.scale_[2] + scaler.mean_[2]
 
     # Calculate evaluation metrics
-    mse = mean_squared_error(y_test_scaled, y_pred_scaled)
-    mae = mean_absolute_error(y_test_scaled, y_pred_scaled)
-    r2 = r2_score(y_test_scaled, y_pred_scaled)
+    mse = mean_squared_error(y_test, y_pred)
+    mae = mean_absolute_error(y_test, y_pred)
+    r2 = r2_score(y_test, y_pred)
+
 
     print(f'Mean Squared Error: {mse}')
     print(f'Mean Absolute Error: {mae}')
     print(f'R-squared: {r2}')
 
-    # Apply the classification function to the actual and predicted glucose levels
-    y_test_classes = np.array([categorize_glucose_level(val) for val in y_test_scaled])
-    y_pred_classes = np.array([categorize_glucose_level(val) for val in y_pred_scaled])
+
+    y_pred=np.argmax(y_pred, axis=1)
+    y_test=np.argmax(y_test, axis=1)
 
     # Calculate accuracy
-    accuracy = accuracy_score(y_test_classes, y_pred_classes)
+    accuracy = accuracy_score(y_test, y_pred)
     print(f'Classification Accuracy: {accuracy}')
+
+    model.save('models/lstm.h5')
+
 
 def sktime_classifiers():
     
     # Encode the 'level' column
     label_encoder = LabelEncoder()
     df['level'] = label_encoder.fit_transform(df['level'])
-
+    timesteps = 8
     # Prepare data fpr sktime
     X, y = [], []
     for patient_id in df['PatientID'].unique():
         patient_data = df[df['PatientID'] == patient_id]
-        for i in range(4, len(patient_data)):
-            X.append(patient_data[['steps', 'heart', 'glucose_level']].iloc[i-4:i].values)
+        for i in range(timesteps, len(patient_data)):
+            X.append(patient_data[['steps', 'heart', 'glucose_level']].iloc[i-timesteps:i].values)
             y.append(patient_data['level'].iloc[i])
 
     X = np.array(X)
+    X = X.transpose(0, 2, 1)
     y = np.array(y)
 
     # Split the data
@@ -140,10 +150,10 @@ def sktime_classifiers():
 
     # Initialize classifiers
     classifiers = {
-        # "Time Series Forest": TimeSeriesForestClassifier()
+        "Time Series Forest": TimeSeriesForestClassifier()
         # "Shapelet Transform": ShapeletTransformClassifier(),
         # "Simple RNN": SimpleRNNClassifier()
-        "HIVE-COTE v2": HIVECOTEV2()
+        # "HIVE-COTE v2": HIVECOTEV2()
         # "BOSS": BOSSEnsemble(),
         # "KNeighbors Time Series": KNeighborsTimeSeriesClassifier()
 
